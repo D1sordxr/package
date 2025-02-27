@@ -1,4 +1,4 @@
-package config
+package logger
 
 type Config struct {
 	LogLevel         string

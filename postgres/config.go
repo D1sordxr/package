@@ -1,4 +1,4 @@
-package config
+package postgres
 
 import "fmt"
 

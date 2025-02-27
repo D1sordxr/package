@@ -7,7 +7,6 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"package/logger/config"
 	"runtime/debug"
 )
 
@@ -38,7 +37,7 @@ type Logger interface {
 
 type Log struct {
 	logger    *zap.SugaredLogger
-	Config    config.Config
+	Config    Config
 	loggerStd *zap.Logger
 	debug     bool
 }
@@ -75,13 +74,13 @@ func Default() *Log {
 	return &Log{
 		logger:    logger.Sugar(),
 		loggerStd: logger,
-		Config: config.Config{
+		Config: Config{
 			ContextLogFields: []string{RequestIDField},
 		},
 	}
 }
 
-func New(cfg config.Config) *Log {
+func New(cfg Config) *Log {
 	l := Default()
 	l.Config = cfg
 	l.Config.ContextLogFields = addStr(l.Config.ContextLogFields, RequestIDField)
