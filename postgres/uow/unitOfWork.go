@@ -1,17 +1,26 @@
-package unit_of_work
+package uow
 
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"package/postgres/executor"
 )
 
+type UnitOfWork interface {
+	BeginWithTxAndBatch(ctx context.Context) (context.Context, error)
+	BeginWithTx(ctx context.Context) (context.Context, error)
+	Rollback(ctx context.Context) error
+	GracefulRollback(ctx context.Context, err *error)
+	Commit(ctx context.Context) error
+}
+
 type UnitOfWorkImpl struct {
-	Executor *executor.Executor
+	Executor *executor.Manager
 }
 
 func NewUnitOfWork(
-	executor *executor.Executor,
+	executor *executor.Manager,
 ) *UnitOfWorkImpl {
 	return &UnitOfWorkImpl{
 		Executor: executor,
@@ -23,20 +32,10 @@ func (u *UnitOfWorkImpl) BeginWithTx(ctx context.Context) (context.Context, erro
 
 	tx, err := u.Executor.Begin(ctx)
 	if err != nil {
-		return ctx, fmt.Errorf("%s: %w: %v", op, ErrTxStartFailed, err)
+		return ctx, fmt.Errorf("%s: %w: %w", op, ErrTxStartFailed, err)
 	}
 
 	ctx = u.Executor.InjectTx(ctx, tx)
-
-	return ctx, nil
-}
-
-func (u *UnitOfWorkImpl) BeginWithBatch(ctx context.Context) (context.Context, error) {
-	const op = "postgres.UnitOfWork.BeginWithBatch"
-
-	batch := u.Executor.NewBatch()
-
-	ctx = u.Executor.InjectBatch(ctx, batch)
 
 	return ctx, nil
 }
@@ -46,7 +45,7 @@ func (u *UnitOfWorkImpl) BeginWithTxAndBatch(ctx context.Context) (context.Conte
 
 	tx, err := u.Executor.Begin(ctx)
 	if err != nil {
-		return ctx, fmt.Errorf("%s: %w: %v", op, ErrTxStartFailed, err)
+		return ctx, fmt.Errorf("%s: %w: %w", op, ErrTxStartFailed, err)
 	}
 
 	batch := u.Executor.NewBatch()
@@ -67,21 +66,49 @@ func (u *UnitOfWorkImpl) Commit(ctx context.Context) error {
 
 	if batchExecutor, ok := u.Executor.ExtractBatch(ctx); ok {
 		results := tx.SendBatch(ctx, batchExecutor.Batch)
-		for i := 0; i < batchExecutor.Batch.Len(); i++ {
-			_, err := results.Exec()
-			if err != nil {
-				return fmt.Errorf("%s: %w: %v", op, ErrExecBatch, err)
+		defer func() {
+			_ = results.Close()
+		}()
+
+		if batchExecutor.Batch.Len() > 0 {
+			for i := 0; i < batchExecutor.Batch.Len(); i++ {
+				_, err := results.Exec()
+				if err != nil {
+					return fmt.Errorf("%s: %w: %w", op, ErrExecBatch, err)
+				}
 			}
 		}
 
 		if err := results.Close(); err != nil {
-			return fmt.Errorf("%s: %w: %v", op, ErrClosingBatch, err)
+			return fmt.Errorf("%s: %w: %w", op, ErrClosingBatch, err)
 		}
 
 	}
+	if batchExecutor, ok := u.Executor.ExtractBatch(ctx); ok {
+		results := tx.SendBatch(ctx, batchExecutor.Batch)
+		err := func(results pgx.BatchResults) error {
+			var err error
+			defer func() {
+				err = results.Close()
+			}()
+
+			if batchExecutor.Batch.Len() > 0 {
+				for i := 0; i < batchExecutor.Batch.Len(); i++ {
+					_, err := results.Exec()
+					if err != nil {
+						return fmt.Errorf("%s: %w: %w", op, ErrExecBatch, err)
+					}
+				}
+			}
+			return err
+		}(results)
+		if err != nil {
+			return err
+		}
+	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("%s: %w: %v", op, ErrCommitTx, err)
+		return fmt.Errorf("%s: %w: %w", op, ErrCommitTx, err)
 	}
 
 	return nil
@@ -96,7 +123,7 @@ func (u *UnitOfWorkImpl) Rollback(ctx context.Context) error {
 	}
 
 	if err := tx.Rollback(ctx); err != nil {
-		return fmt.Errorf("%s: %w: %v", op, ErrRollbackTx, err)
+		return fmt.Errorf("%s: %w: %w", op, ErrRollbackTx, err)
 	}
 
 	return nil

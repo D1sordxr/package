@@ -7,7 +7,8 @@ import (
 	"package/postgres"
 )
 
-type IExecutor interface {
+// Executor defines the interface for executing database operations.
+type Executor interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, optionsAndArgs ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, optionsAndArgs ...any) pgx.Row
@@ -15,42 +16,56 @@ type IExecutor interface {
 	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
 }
 
+// txKey and batchKey are used as keys for storing transactions and batches in the context.
 type (
 	txKey    struct{}
 	batchKey struct{}
 )
 
-type Executor struct {
+// Manager of the Executor interface.
+// It is used to manage transactions and batches in the context and delegate queries to the appropriate executor.
+type Manager struct {
 	*postgres.Pool
 }
 
-func NewExecutor(pool *postgres.Pool) *Executor {
-	return &Executor{Pool: pool}
+// NewManager creates a new Manager instance with the given Postgres connection pool.
+func NewManager(pool *postgres.Pool) *Manager {
+	return &Manager{Pool: pool}
 }
 
-func (e *Executor) InjectTx(ctx context.Context, tx pgx.Tx) context.Context {
+// InjectTx stores a transaction in the context for later retrieval.
+func (e *Manager) InjectTx(ctx context.Context, tx pgx.Tx) context.Context {
 	return context.WithValue(ctx, txKey{}, tx)
 }
 
-func (e *Executor) ExtractTx(ctx context.Context) (pgx.Tx, bool) {
+// ExtractTx retrieves a transaction from the context.
+// It returns the transaction and a boolean indicating whether a transaction was found.
+func (e *Manager) ExtractTx(ctx context.Context) (pgx.Tx, bool) {
 	tx, ok := ctx.Value(txKey{}).(pgx.Tx)
 	return tx, ok
 }
 
-func (e *Executor) NewBatch() *BatchExecutor {
+// NewBatch creates a new BatchExecutor for queueing batch queries.
+func (e *Manager) NewBatch() *BatchExecutor {
 	return &BatchExecutor{Batch: &pgx.Batch{}}
 }
 
-func (e *Executor) InjectBatch(ctx context.Context, batch *BatchExecutor) context.Context {
+// InjectBatch stores a batch in the context for later retrieval.
+func (e *Manager) InjectBatch(ctx context.Context, batch *BatchExecutor) context.Context {
 	return context.WithValue(ctx, batchKey{}, batch)
 }
 
-func (e *Executor) ExtractBatch(ctx context.Context) (*BatchExecutor, bool) {
+// ExtractBatch retrieves a batch from the context, if it exists.
+func (e *Manager) ExtractBatch(ctx context.Context) (*BatchExecutor, bool) {
 	batch, ok := ctx.Value(batchKey{}).(*BatchExecutor)
 	return batch, ok
 }
 
-func (e *Executor) GetExecutor(ctx context.Context) IExecutor {
+// GetExecutor returns the appropriate executor based on the context.
+// If a batch is present in the context, it returns the batch executor.
+// If a transaction is present, it returns the transaction.
+// Otherwise, it returns a PoolExecutor, which wraps the connection pool.
+func (e *Manager) GetExecutor(ctx context.Context) Executor {
 	if batch, ok := e.ExtractBatch(ctx); ok {
 		return batch
 	}
@@ -59,5 +74,5 @@ func (e *Executor) GetExecutor(ctx context.Context) IExecutor {
 		return tx
 	}
 
-	return e.Pool
+	return &PoolExecutor{Pool: e.Pool}
 }

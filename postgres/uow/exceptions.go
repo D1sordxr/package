@@ -1,4 +1,4 @@
-package unit_of_work
+package uow
 
 import "errors"
 
