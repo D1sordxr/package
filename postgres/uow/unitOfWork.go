@@ -3,7 +3,6 @@ package uow
 import (
 	"context"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"package/postgres/executor"
 )
 
@@ -65,32 +64,9 @@ func (u *UnitOfWorkImpl) Commit(ctx context.Context) error {
 	}
 
 	if batchExecutor, ok := u.Executor.ExtractBatch(ctx); ok {
-		results := tx.SendBatch(ctx, batchExecutor.Batch)
-		defer func() {
-			_ = results.Close()
-		}()
-
-		if batchExecutor.Batch.Len() > 0 {
-			for i := 0; i < batchExecutor.Batch.Len(); i++ {
-				_, err := results.Exec()
-				if err != nil {
-					return fmt.Errorf("%s: %w: %w", op, ErrExecBatch, err)
-				}
-			}
-		}
-
-		if err := results.Close(); err != nil {
-			return fmt.Errorf("%s: %w: %w", op, ErrClosingBatch, err)
-		}
-
-	}
-	if batchExecutor, ok := u.Executor.ExtractBatch(ctx); ok {
-		results := tx.SendBatch(ctx, batchExecutor.Batch)
-		err := func(results pgx.BatchResults) error {
-			var err error
-			defer func() {
-				err = results.Close()
-			}()
+		if err := func() error {
+			results := tx.SendBatch(ctx, batchExecutor.Batch)
+			defer results.Close()
 
 			if batchExecutor.Batch.Len() > 0 {
 				for i := 0; i < batchExecutor.Batch.Len(); i++ {
@@ -100,9 +76,8 @@ func (u *UnitOfWorkImpl) Commit(ctx context.Context) error {
 					}
 				}
 			}
-			return err
-		}(results)
-		if err != nil {
+			return nil
+		}(); err != nil {
 			return err
 		}
 	}
