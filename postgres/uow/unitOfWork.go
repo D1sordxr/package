@@ -6,18 +6,22 @@ import (
 	"package/postgres/executor"
 )
 
+// UnitOfWork interface defines the methods for managing transactions and batch operations.
 type UnitOfWork interface {
-	BeginWithTxAndBatch(ctx context.Context) (context.Context, error)
 	BeginWithTx(ctx context.Context) (context.Context, error)
+	BeginWithTxAndBatch(ctx context.Context) (context.Context, error)
 	Rollback(ctx context.Context) error
 	GracefulRollback(ctx context.Context, err *error)
 	Commit(ctx context.Context) error
 }
 
+// UnitOfWorkImpl struct implements the UnitOfWork interface.
+// It uses an executor.Manager to interact with the database.
 type UnitOfWorkImpl struct {
 	Executor *executor.Manager
 }
 
+// NewUnitOfWork creates a new instance of UnitOfWorkImpl.
 func NewUnitOfWork(
 	executor *executor.Manager,
 ) *UnitOfWorkImpl {
@@ -26,6 +30,7 @@ func NewUnitOfWork(
 	}
 }
 
+// BeginWithTx starts a new transaction and injects it into the context.
 func (u *UnitOfWorkImpl) BeginWithTx(ctx context.Context) (context.Context, error) {
 	const op = "postgres.UnitOfWork.BeginWithTx"
 
@@ -39,6 +44,7 @@ func (u *UnitOfWorkImpl) BeginWithTx(ctx context.Context) (context.Context, erro
 	return ctx, nil
 }
 
+// BeginWithTxAndBatch starts a new transaction, initializes a batch operation, and injects both into the context.
 func (u *UnitOfWorkImpl) BeginWithTxAndBatch(ctx context.Context) (context.Context, error) {
 	const op = "postgres.UnitOfWork.BeginWithTxAndBatch"
 
@@ -55,6 +61,7 @@ func (u *UnitOfWorkImpl) BeginWithTxAndBatch(ctx context.Context) (context.Conte
 	return ctx, nil
 }
 
+// Commit current transaction and executes any pending batch operations.
 func (u *UnitOfWorkImpl) Commit(ctx context.Context) error {
 	const op = "postgres.UnitOfWork.Commit"
 
@@ -89,6 +96,7 @@ func (u *UnitOfWorkImpl) Commit(ctx context.Context) error {
 	return nil
 }
 
+// Rollback the current transaction.
 func (u *UnitOfWorkImpl) Rollback(ctx context.Context) error {
 	const op = "postgres.UnitOfWork.Rollback"
 
@@ -104,6 +112,8 @@ func (u *UnitOfWorkImpl) Rollback(ctx context.Context) error {
 	return nil
 }
 
+// GracefulRollback performs a rollback in case of an error or panic.
+// This method is intended to be used with defer to ensure that resources are properly cleaned up.
 func (u *UnitOfWorkImpl) GracefulRollback(ctx context.Context, err *error) {
 	const op = "postgres.UnitOfWork.GracefulRollback"
 
