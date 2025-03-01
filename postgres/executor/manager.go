@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"package/postgres"
@@ -34,29 +35,29 @@ func NewManager(pool *postgres.Pool) *Manager {
 }
 
 // InjectTx stores a transaction in the context for later retrieval.
-func (e *Manager) InjectTx(ctx context.Context, tx pgx.Tx) context.Context {
+func (m *Manager) InjectTx(ctx context.Context, tx pgx.Tx) context.Context {
 	return context.WithValue(ctx, txKey{}, tx)
 }
 
 // ExtractTx retrieves a transaction from the context.
 // It returns the transaction and a boolean indicating whether a transaction was found.
-func (e *Manager) ExtractTx(ctx context.Context) (pgx.Tx, bool) {
+func (m *Manager) ExtractTx(ctx context.Context) (pgx.Tx, bool) {
 	tx, ok := ctx.Value(txKey{}).(pgx.Tx)
 	return tx, ok
 }
 
 // NewBatch creates a new BatchExecutor for queueing batch queries.
-func (e *Manager) NewBatch() *BatchExecutor {
+func (m *Manager) NewBatch() *BatchExecutor {
 	return &BatchExecutor{Batch: &pgx.Batch{}}
 }
 
 // InjectBatch stores a batch in the context for later retrieval.
-func (e *Manager) InjectBatch(ctx context.Context, batch *BatchExecutor) context.Context {
+func (m *Manager) InjectBatch(ctx context.Context, batch *BatchExecutor) context.Context {
 	return context.WithValue(ctx, batchKey{}, batch)
 }
 
 // ExtractBatch retrieves a batch from the context, if it exists.
-func (e *Manager) ExtractBatch(ctx context.Context) (*BatchExecutor, bool) {
+func (m *Manager) ExtractBatch(ctx context.Context) (*BatchExecutor, bool) {
 	batch, ok := ctx.Value(batchKey{}).(*BatchExecutor)
 	return batch, ok
 }
@@ -65,14 +66,43 @@ func (e *Manager) ExtractBatch(ctx context.Context) (*BatchExecutor, bool) {
 // If a batch is present in the context, it returns the batch executor.
 // If a transaction is present, it returns the transaction.
 // Otherwise, it returns a PoolExecutor, which wraps the connection pool.
-func (e *Manager) GetExecutor(ctx context.Context) Executor {
-	if batch, ok := e.ExtractBatch(ctx); ok {
+func (m *Manager) GetExecutor(ctx context.Context) Executor {
+	if batch, ok := m.ExtractBatch(ctx); ok {
 		return batch
 	}
 
-	if tx, ok := e.ExtractTx(ctx); ok {
+	if tx, ok := m.ExtractTx(ctx); ok {
 		return tx
 	}
 
-	return &PoolExecutor{Pool: e.Pool}
+	return &PoolExecutor{Pool: m.Pool}
+}
+
+// GetPoolExecutor returns a PoolExecutor that wraps the connection pool.
+// It can be used to execute queries outside a transaction or batch.
+// Prefer using GetExecutor instead of this method.
+func (m *Manager) GetPoolExecutor() Executor {
+	return &PoolExecutor{Pool: m.Pool}
+}
+
+// GetTxExecutor returns the transaction executor from the context.
+// Prefer using GetExecutor instead of this method.
+func (m *Manager) GetTxExecutor(ctx context.Context) (Executor, error) {
+	tx, ok := m.ExtractTx(ctx)
+	if !ok {
+		return tx, nil
+	}
+
+	return tx, errors.New("no transaction found in context")
+}
+
+// GetBatchExecutor returns the batch executor from the context.
+// Prefer using GetExecutor instead of this method.
+func (m *Manager) GetBatchExecutor(ctx context.Context) (Executor, error) {
+	batch, ok := m.ExtractBatch(ctx)
+	if !ok {
+		return batch, nil
+	}
+
+	return batch, errors.New("no batch found in context")
 }
