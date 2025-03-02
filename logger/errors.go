@@ -58,3 +58,7 @@ func mergeFields(fld1, fld2 Fld) Fld {
 
 	return result
 }
+
+var (
+	MarshalErr = errors.New("failed to marshal log")
+)

@@ -1,8 +1,10 @@
 package logger
 
 type Config struct {
-	LogLevel         string
-	ContextLogFields []string `mapstructure:"context_log_fields"`
-	CallerSkip       int
-	BufferSize       int
+	LogLevel         string   `yaml:"log_level"`
+	IsFormatted      bool     `yaml:"is_formatted"`
+	ContextLogFields []string `yaml:"context_log_fields"`
+	CallerSkip       int      `yaml:"caller_skip"`
+	BufferSize       int      `yaml:"buffer_size"`
+	OverflowStrategy BufferOverflowStrategy
 }
