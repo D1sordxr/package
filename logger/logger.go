@@ -66,7 +66,7 @@ func Default() *Log {
 			MessageKey: "message",
 
 			LevelKey:    "level",
-			EncodeLevel: zapcore.CapitalLevelEncoder,
+			EncodeLevel: zapcore.CapitalColorLevelEncoder,
 
 			TimeKey:    "time",
 			EncodeTime: zapcore.ISO8601TimeEncoder,
@@ -106,7 +106,7 @@ func New(cfg Config) *Log {
 	return l
 }
 
-func (l *Log) toAsync() Logger {
+func (l *Log) ToAsync() *AsyncLogger {
 	return NewAsyncLogger(*l)
 }
 
