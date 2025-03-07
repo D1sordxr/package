@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/D1sordxr/packages/logger"
 	"github.com/google/uuid"
 	"math/rand"
-	"package/logger"
 	"time"
 )
 
@@ -18,9 +18,7 @@ func main() {
 		BufferSize:       100,
 	}
 
-	//log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	log := logger.NewZapLogger()
-	//log := logger.New(cfg).ToAsync()
+	log := logger.New(cfg).ToAsync()
 	baseLog := logger.BaseLog{
 		Operation: "test",
 		Data:      logger.Data{},

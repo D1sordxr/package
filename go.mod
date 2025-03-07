@@ -1,4 +1,4 @@
-module github.com/D1sordxr/package
+module github.com/D1sordxr/packages
 
 go 1.23rc2
 
