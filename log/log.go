@@ -1,16 +1,22 @@
-package logger
+package log
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/golang/glog"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
+	"os/signal"
 	"runtime/debug"
-	"strings"
+	"syscall"
+)
+
+const (
+	RequestIDField    = "_request_id"
+	DebugField        = "_debug"
+	VersionField      = "_version"
+	DefaultCallerSkip = 2
 )
 
 type Logger interface {
@@ -24,27 +30,43 @@ type Logger interface {
 	Errorf(msg string, args ...interface{})
 	Errorw(msg string, keysAndValues ...interface{})
 	Panic(msg string)
+	ErrWithError(ctx context.Context, err error, msg string)
+	ErrWithErrorf(ctx context.Context, err error, msg string, args ...interface{})
+	ErrWithErrorw(ctx context.Context, err error, msg string, keysAndValues ...interface{})
+	// LogGRPC integration for grpc unary middleware
+	LogGRPC(ctx context.Context, lvl logging.Level, msg string, fields ...any)
 }
 
-// BaseLog is an example of default log structure.
-type BaseLog struct {
-	Operation string `json:"operation"`
-	Data      any    `json:"data"`
-}
-
-// Data is an example structure used in BaseLog's Data field.
-type Data struct {
-	FieldA string  `json:"fieldA"`
-	FieldB float64 `json:"fieldB"`
-	FieldC int     `json:"fieldC"`
-}
-
-const (
-	RequestIDField    = "_request_id"
-	DebugField        = "_debug"
-	VersionField      = "_version"
-	DefaultCallerSkip = 2
+var (
+	glog = Default()
 )
+
+func init() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGHUP)
+
+	go func() {
+		for {
+			<-signals
+			glog.Info("Log Rotate signal received")
+		}
+	}()
+}
+
+type Config struct {
+	LogLevel         string
+	ContextLogFields []string `mapstructure:"context_log_fields"`
+	CallerSkip       int
+
+	SentryDSN               string `mapstructure:"sentry_dsn"`
+	SentryEnableBreadcrumbs bool
+	SentryMaxBreadcrumbs    int
+
+	TgChatID       int64
+	TgToken        string
+	TgMsgParseMode string
+	TgAppName      string
+}
 
 type Log struct {
 	logger    *zap.SugaredLogger
@@ -66,7 +88,7 @@ func Default() *Log {
 			MessageKey: "message",
 
 			LevelKey:    "level",
-			EncodeLevel: zapcore.CapitalColorLevelEncoder,
+			EncodeLevel: zapcore.CapitalLevelEncoder,
 
 			TimeKey:    "time",
 			EncodeTime: zapcore.ISO8601TimeEncoder,
@@ -106,133 +128,55 @@ func New(cfg Config) *Log {
 	return l
 }
 
+func (l *Log) GetZapLogger() *zap.Logger {
+	return l.loggerStd
+}
+
+// ToAsync needs a rework to be able to use.
+// So use the default logger for now
 func (l *Log) ToAsync() *AsyncLogger {
 	return NewAsyncLogger(*l)
 }
 
-// handleLogging handles the logging logic with optional formatting.
-func (l *Log) handleLogging(logFunc func(string, ...any), msg string, args ...any) {
-	if l.Config.IsFormatted {
-		msg += l.beautify(args...)
-		logFunc(msg)
-		return
-	}
-	logFunc(msg, args...)
-}
-
-// beautify formats the arguments into a readable string.
-func (l *Log) beautify(args ...any) string {
-	const op = "logger.beautify"
-
-	var output []string
-
-	for _, arg := range args {
-		switch v := arg.(type) {
-		case string:
-			output = append(output, v)
-		case fmt.Stringer:
-			output = append(output, v.String())
-		default:
-			jsonData, err := json.MarshalIndent(v, "", "  ")
-			if err != nil {
-				logErr := errors.Join(
-					fmt.Errorf("%s: failed to marshal log", op),
-					MarshalErr,
-					err,
-					fmt.Errorf("type: %T, value: %+v", arg, arg),
-				).Error()
-				output = append(output, logErr)
-			} else {
-				output = append(output, string(jsonData))
-			}
-
-		}
-	}
-
-	return strings.Join(output, " ")
-}
-
-// Info logs a message at the Info level.
 func (l *Log) Info(msg string) {
-	l.handleLogging(l.logger.Infof, msg)
+	l.logger.Info(msg)
 }
 
-// Infof logs a formatted message at the Info level.
-func (l *Log) Infof(template string, args ...interface{}) {
-	l.handleLogging(l.logger.Infof, template, args...)
+func (l *Log) Infof(msg string, args ...interface{}) {
+	l.logger.Infof(msg, args...)
 }
 
-// Infow logs a structured message at the Info level.
 func (l *Log) Infow(msg string, keysAndValues ...interface{}) {
-	if l.Config.IsFormatted {
-		msg += l.beautify(keysAndValues...)
-		l.logger.Info(msg)
-	} else {
-		l.logger.Infow(msg, keysAndValues...)
-	}
+	l.logger.Infow(msg, keysAndValues...)
 }
 
-// Debug logs a message at the Debug level.
-func (l *Log) Debug(msg string) {
-	l.handleLogging(l.logger.Debugf, msg)
-}
-
-// Debugf logs a formatted message at the Debug level.
-func (l *Log) Debugf(template string, args ...interface{}) {
-	l.handleLogging(l.logger.Debugf, template, args...)
-}
-
-// Debugw logs a structured message at the Debug level.
-func (l *Log) Debugw(msg string, keysAndValues ...interface{}) {
-	if l.Config.IsFormatted {
-		msg += l.beautify(keysAndValues...)
-		l.logger.Debug(msg)
-	} else {
-		l.logger.Debugw(msg, keysAndValues...)
-	}
-}
-
-// Error logs a message at the Error level.
 func (l *Log) Error(msg string) {
-	l.handleLogging(l.logger.Errorf, msg)
+	l.logger.Error(msg)
 }
 
-// Errorf logs a formatted message at the Error level.
-func (l *Log) Errorf(template string, args ...interface{}) {
-	l.handleLogging(l.logger.Errorf, template, args...)
+func (l *Log) Errorf(msg string, args ...interface{}) {
+	l.logger.Errorf(msg, args...)
 }
 
-// Errorw logs a structured message at the Error level.
 func (l *Log) Errorw(msg string, keysAndValues ...interface{}) {
-	if l.Config.IsFormatted {
-		msg += l.beautify(keysAndValues...)
-		l.logger.Error(msg)
-	} else {
-		l.logger.Errorw(msg, keysAndValues...)
+	l.logger.Errorw(msg, keysAndValues...)
+}
+
+func (l *Log) Debug(msg string) {
+	if l.debug {
+		l.logger.Debug(msg)
 	}
 }
 
-// Panic logs a message at the Panic level and then panics.
-func (l *Log) Panic(msg string, args ...any) {
-	l.handleLogging(l.logger.Panicf, msg, args...)
+func (l *Log) Debugf(msg string, args ...interface{}) {
+	if l.debug {
+		l.logger.Debugf(msg, args...)
+	}
 }
 
-func (l *Log) Close() {
-	_ = l.loggerStd.Sync()
-}
-
-func (l *Log) LogGRPC(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-	switch lvl {
-	case logging.LevelDebug:
-		l.logger.Debugw(msg, fields...)
-	case logging.LevelInfo:
-		l.logger.Infow(msg, fields...)
-	case logging.LevelWarn:
-		l.logger.Warnw(msg, fields...)
-	case logging.LevelError:
-		l.logger.Errorw(msg, fields...)
-	default:
-		panic(fmt.Sprintf("unknown level %v", lvl))
+func (l *Log) Debugw(msg string, keysAndValues ...interface{}) {
+	if l.debug {
+		l.logger.Debugw(msg, keysAndValues)
 	}
 }
 
@@ -290,6 +234,24 @@ func (l *Log) WithCtx(ctx context.Context) *Log {
 
 	return copied
 }
+func (l *Log) Panic(msg string) {
+	l.logger.Panic(msg)
+}
+
+func (l *Log) LogGRPC(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+	switch lvl {
+	case logging.LevelDebug:
+		l.logger.Debugw(msg, fields...)
+	case logging.LevelInfo:
+		l.logger.Infow(msg, fields...)
+	case logging.LevelWarn:
+		l.logger.Warnw(msg, fields...)
+	case logging.LevelError:
+		l.logger.Errorw(msg, fields...)
+	default:
+		panic(fmt.Sprintf("unknown level %v", lvl))
+	}
+}
 
 func (l *Log) copyWithEntry(entry zap.SugaredLogger) *Log {
 	return &Log{
@@ -298,6 +260,7 @@ func (l *Log) copyWithEntry(entry zap.SugaredLogger) *Log {
 	}
 }
 
+// LogPanic логирует пойманную панику
 func LogPanic(recovered interface{}) { // nolint: revive
 	if recovered == nil {
 		return

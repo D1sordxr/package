@@ -3,9 +3,9 @@ package executor
 import (
 	"context"
 	"errors"
+	"github.com/D1sordxr/packages/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"package/postgres"
 )
 
 // Executor defines the interface for executing database operations.

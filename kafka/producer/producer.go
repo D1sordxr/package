@@ -8,6 +8,10 @@ type Config struct {
 }
 
 func NewProducer(config Config) (*kafka.Writer, error) {
+	if len(config.Brokers) == 0 || config.Topic == "" {
+		panic("invalid config data")
+	}
+
 	w := &kafka.Writer{
 		Addr:     kafka.TCP(config.Brokers...),
 		Topic:    config.Topic,

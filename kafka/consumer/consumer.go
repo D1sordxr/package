@@ -1,28 +1,25 @@
 package consumer
 
-import "github.com/segmentio/kafka-go"
+import (
+	"github.com/segmentio/kafka-go"
+)
 
 type Config struct {
 	Brokers []string
+	Topic   string
+	GroupID string
 }
 
-// TODO: NewConsumer
+func NewConsumer(config *Config) *kafka.Reader {
+	if len(config.Brokers) == 0 || config.Topic == "" || config.GroupID == "" {
+		panic("invalid config data")
+	}
 
-func NewConsumer(config Config) (r *kafka.Reader, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = r.(error)
-		}
-	}()
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers: config.Brokers,
+		GroupID: config.GroupID,
+		Topic:   config.Topic,
+	})
 
-	// TODO: ...
-
-	//reader := kafka.NewReader(kafka.ReaderConfig{
-	//	Brokers: config.Brokers,
-	//	GroupID: "group-id",
-	//	Topic:   "topic",
-	//})
-
-	//return reader, err
-	return nil, nil
+	return reader
 }

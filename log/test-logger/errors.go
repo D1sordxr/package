@@ -1,4 +1,4 @@
-package logger
+package test_logger
 
 import (
 	"errors"

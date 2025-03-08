@@ -1,4 +1,4 @@
-package logger
+package log
 
 import (
 	"context"
@@ -25,7 +25,7 @@ type AsyncMsg struct {
 	args    []any
 }
 
-// AsyncLogger is a logger that processes messages asynchronously.
+// AsyncLogger is a test-logger that processes messages asynchronously.
 type AsyncLogger struct {
 	Logger   Log
 	logChan  chan AsyncMsg
@@ -36,8 +36,9 @@ type AsyncLogger struct {
 // NewAsyncLogger creates a new instance of AsyncLogger.
 func NewAsyncLogger(logger Log) *AsyncLogger {
 	afl := &AsyncLogger{
-		Logger:  logger,
-		logChan: make(chan AsyncMsg, logger.Config.BufferSize),
+		Logger: logger,
+		//logChan: make(chan AsyncMsg, logger.Config.BufferSize),
+		logChan: make(chan AsyncMsg, 1000),
 	}
 
 	afl.wg.Add(1)
@@ -77,7 +78,7 @@ func (l *AsyncLogger) processLogs() {
 	}
 }
 
-// BufferOverflowStrategy defines how the logger should behave when the buffer overflows.
+// BufferOverflowStrategy defines how the test-logger should behave when the buffer overflows.
 type BufferOverflowStrategy int
 
 const (
@@ -94,7 +95,8 @@ func (l *AsyncLogger) logAsync(msg AsyncMsg) {
 	select {
 	case l.logChan <- msg:
 	default:
-		switch l.Logger.Config.OverflowStrategy {
+		//switch l.Logger.Config.OverflowStrategy {
+		switch BufferOverflowStrategy(Block) {
 		case Block:
 			// Block until space is available in the buffer
 			l.logChan <- msg
@@ -167,7 +169,7 @@ func (l *AsyncLogger) Panic(msg string) {
 	l.logAsync(AsyncMsg{level: PanicLogLevel, message: msg})
 }
 
-// Shutdown waits for all log messages to be processed and gracefully shuts down the logger.
+// Shutdown waits for all log messages to be processed and gracefully shuts down the test-logger.
 func (l *AsyncLogger) Shutdown(ctx context.Context) {
 	l.shutdown.Do(func() {
 		// Close the log channel to stop accepting new messages

@@ -3,9 +3,9 @@ package executor
 import (
 	"context"
 
+	"github.com/D1sordxr/packages/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"package/postgres"
 )
 
 // PoolExecutor is a wrapper around postgres.Pool that implements the Executor interface.

@@ -1,4 +1,4 @@
-package logger
+package test_logger
 
 type Config struct {
 	LogLevel         string   `yaml:"log_level"`

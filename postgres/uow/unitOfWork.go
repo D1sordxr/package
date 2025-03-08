@@ -3,7 +3,7 @@ package uow
 import (
 	"context"
 	"fmt"
-	"package/postgres/executor"
+	"github.com/D1sordxr/packages/postgres/executor"
 )
 
 // UnitOfWork interface defines the methods for managing transactions and batch operations.
