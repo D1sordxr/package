@@ -1,22 +1,49 @@
 package producer
 
-import "github.com/segmentio/kafka-go"
+import (
+	"context"
+	"github.com/segmentio/kafka-go"
+	"time"
+)
 
-type Config struct {
-	Brokers []string
-	Topic   string
+type IProducer interface {
+	SendMessage(ctx context.Context, topic string, key []byte, value []byte) error
 }
 
-func NewProducer(config Config) (*kafka.Writer, error) {
-	if len(config.Brokers) == 0 || config.Topic == "" {
-		panic("invalid config data")
+type Config struct {
+	Brokers      []string      `yaml:"brokers" binding:"required"`
+	BatchSize    int           `yaml:"batch_size" env-default:"10"`
+	BatchTimeout time.Duration `yaml:"batch_timeout" env-default:"500ms"`
+}
+
+type Producer struct {
+	Writer *kafka.Writer
+}
+
+func NewProducer(config *Config) *Producer {
+	writer := &kafka.Writer{
+		Addr:         kafka.TCP(config.Brokers...),
+		Balancer:     &kafka.LeastBytes{},
+		BatchSize:    config.BatchSize,
+		BatchTimeout: config.BatchTimeout,
 	}
 
-	w := &kafka.Writer{
-		Addr:     kafka.TCP(config.Brokers...),
-		Topic:    config.Topic,
-		Balancer: &kafka.LeastBytes{},
-	}
+	return &Producer{Writer: writer}
+}
 
-	return w, nil
+func (p *Producer) SendMessage(
+	ctx context.Context,
+	topic string,
+	key []byte,
+	value []byte,
+) error {
+	return p.Writer.WriteMessages(ctx, kafka.Message{
+		Topic: topic,
+		Key:   key,
+		Value: value,
+	})
+}
+
+func (p *Producer) Close() error {
+	return p.Writer.Close()
 }
