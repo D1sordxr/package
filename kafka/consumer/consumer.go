@@ -30,7 +30,7 @@ type Consumer struct {
 }
 
 func NewConsumer(config *Config, topic string, handler Handler, log Logger) *Consumer {
-	if len(config.Brokers) == 0 || config.GroupID == "" || topic == "" {
+	if len(config.Brokers) == 0 || topic == "" {
 		panic("invalid config data")
 	}
 
