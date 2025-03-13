@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-type IProducer interface {
-	SendMessage(ctx context.Context, topic string, key []byte, value []byte) error
-}
-
 type Config struct {
 	Brokers      []string      `yaml:"brokers" binding:"required"`
 	BatchSize    int           `yaml:"batch_size" env-default:"10"`
 	BatchTimeout time.Duration `yaml:"batch_timeout" env-default:"500ms"`
+}
+
+type IProducer interface {
+	SendMessage(ctx context.Context, topic string, key []byte, value []byte) error
 }
 
 type Producer struct {
